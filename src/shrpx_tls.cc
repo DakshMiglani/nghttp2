@@ -1992,6 +1992,65 @@ StringRef get_x509_serial(BlockAllocator &balloc, X509 *x) {
 #endif // !OPENSSL_1_1_API
 }
 
+namespace {
+// Performs conversion from |at| to time_t.  The result is stored in
+// |t|.  This function returns 0 if it succeeds, or -1.
+int time_t_from_asn1_time(time_t &t, const ASN1_TIME *at) {
+  int rv;
+
+  // TODO for openssl 1.1.1, use ASN1_TIME_to_tm().
+  auto b = BIO_new(BIO_s_mem());
+  if (!b) {
+    return -1;
+  }
+
+  auto bio_deleter = defer(BIO_free, b);
+
+  rv = ASN1_TIME_print(b, at);
+  if (rv != 1) {
+    return -1;
+  }
+
+  unsigned char *s;
+  auto slen = BIO_get_mem_data(b, &s);
+  auto tt = util::parse_openssl_asn1_time_print(
+      StringRef{s, static_cast<size_t>(slen)});
+  if (tt == 0) {
+    return -1;
+  }
+
+  t = tt;
+
+  return 0;
+}
+} // namespace
+
+int get_x509_not_before(time_t &t, X509 *x) {
+#if OPENSSL_1_1_1_API
+  auto at = X509_get0_notBefore(x);
+#else  // !OPENSSL_1_1_1_API
+  auto at = X509_get_notBefore(x);
+#endif // !OPENSSL_1_1_1_API
+  if (!at) {
+    return -1;
+  }
+
+  return time_t_from_asn1_time(t, at);
+}
+
+int get_x509_not_after(time_t &t, X509 *x) {
+#if OPENSSL_1_1_1_API
+  auto at = X509_get0_notAfter(x);
+#else  // !OPENSSL_1_1_1_API
+  auto at = X509_get_notAfter(x);
+#endif // !OPENSSL_1_1_1_API
+  if (!at) {
+    return -1;
+  }
+
+  return time_t_from_asn1_time(t, at);
+}
+
 } // namespace tls
 
 } // namespace shrpx
