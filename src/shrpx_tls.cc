@@ -64,6 +64,7 @@
 #include "tls.h"
 #include "template.h"
 #include "ssl_compat.h"
+#include "timegm.h"
 
 using namespace nghttp2;
 
@@ -1998,7 +1999,15 @@ namespace {
 int time_t_from_asn1_time(time_t &t, const ASN1_TIME *at) {
   int rv;
 
-  // TODO for openssl 1.1.1, use ASN1_TIME_to_tm().
+#if OPENSSL_1_1_1_API
+  struct tm tm;
+  rv = ASN1_TIME_to_tm(at, &tm);
+  if (rv != 1) {
+    return -1;
+  }
+
+  t = nghttp2_timegm(&tm);
+#else  // !OPENSSL_1_1_1_API
   auto b = BIO_new(BIO_s_mem());
   if (!b) {
     return -1;
@@ -2020,17 +2029,18 @@ int time_t_from_asn1_time(time_t &t, const ASN1_TIME *at) {
   }
 
   t = tt;
+#endif // !OPENSSL_1_1_1_API
 
   return 0;
 }
 } // namespace
 
 int get_x509_not_before(time_t &t, X509 *x) {
-#if OPENSSL_1_1_1_API
+#if OPENSSL_1_1_API
   auto at = X509_get0_notBefore(x);
-#else  // !OPENSSL_1_1_1_API
+#else  // !OPENSSL_1_1_API
   auto at = X509_get_notBefore(x);
-#endif // !OPENSSL_1_1_1_API
+#endif // !OPENSSL_1_1_API
   if (!at) {
     return -1;
   }
@@ -2039,11 +2049,11 @@ int get_x509_not_before(time_t &t, X509 *x) {
 }
 
 int get_x509_not_after(time_t &t, X509 *x) {
-#if OPENSSL_1_1_1_API
+#if OPENSSL_1_1_API
   auto at = X509_get0_notAfter(x);
-#else  // !OPENSSL_1_1_1_API
+#else  // !OPENSSL_1_1_API
   auto at = X509_get_notAfter(x);
-#endif // !OPENSSL_1_1_1_API
+#endif // !OPENSSL_1_1_API
   if (!at) {
     return -1;
   }
